@@ -85,6 +85,10 @@
                     .map(function (r) { return g.questions[r.index]; });
   }
 
+  function hintCount(g) {
+    return g.results.filter(function (r) { return r.hintUsed; }).length;
+  }
+
   function createRetry(g, rng) {
     var r = createGame("practice", g.category, prepareQuestions(wrongQuestions(g), rng));
     r.isRetry = true;
@@ -115,7 +119,7 @@
     scoreFor: scoreFor, createGame: createGame, currentQuestion: currentQuestion,
     submitAnswer: submitAnswer, submitTimeout: submitTimeout, nextQuestion: nextQuestion,
     isFinished: isFinished, useHint: useHint, wrongQuestions: wrongQuestions,
-    createRetry: createRetry, createCountdown: createCountdown
+    hintCount: hintCount, createRetry: createRetry, createCountdown: createCountdown
   };
 
   /* ===== 화면 ===== */
@@ -130,6 +134,7 @@
     { id: "hint", name: "힌트", desc: "문항마다 힌트 1번, 힌트 쓰고 맞히면 0.5점" }
   ];
   var SPEED_SECONDS = 15;
+  var LOW_SECONDS = 5; // 이 값 이하로 남으면 타이머를 빨갛게 보여 준다
   var timer = null;
 
   function stopTimer() { if (timer) { timer.stop(); timer = null; } }
@@ -142,22 +147,22 @@
   }
   function show(html) { document.getElementById("app").innerHTML = html; }
 
-  function showModes() {
+  function showStart() {
     stopTimer(); game = null;
     show(
-      '<h1>상식 퀴즈</h1><div class="cats">' + MODES.map(function (m) {
-        return '<button data-action="mode" data-mode="' + m.id + '"><strong>' + esc(m.name) + '</strong><br>' +
-               esc(m.desc) + (m.note ? '<br><span class="notice">' + esc(m.note) + '</span>' : '') + '</button>';
+      '<h1>상식 퀴즈</h1><div class="cats">' + CATEGORIES.map(function (c) {
+        return '<button data-action="category" data-category="' + esc(c) + '">' + esc(c) + '</button>';
       }).join("") + '</div>'
     );
   }
 
-  function showCategories(mode) {
+  function showModeSelect(category) {
     show(
-      '<h1>' + esc(modeName(mode)) + ' 모드</h1>' +
-      (mode === "practice" ? '<p class="notice">순위표에 기록되지 않음</p>' : '') +
-      '<div class="cats">' + CATEGORIES.map(function (c) {
-        return '<button data-action="start" data-mode="' + mode + '" data-category="' + esc(c) + '">' + esc(c) + '</button>';
+      '<h1>' + esc(category) + '</h1><p class="progress">모드를 고르세요</p>' +
+      '<div class="cats">' + MODES.map(function (m) {
+        return '<button data-action="start" data-mode="' + m.id + '" data-category="' + esc(category) + '"><strong>' +
+               esc(m.name) + '</strong><br>' + esc(m.desc) +
+               (m.note ? '<br><span class="notice">' + esc(m.note) + '</span>' : '') + '</button>';
       }).join("") + '</div>' +
       '<div class="row"><button data-action="home">뒤로</button></div>'
     );
@@ -186,7 +191,9 @@
     if (game.mode === "speed") {
       timer = Quiz.createCountdown(SPEED_SECONDS, function (left) {
         var el = document.getElementById("timer");
-        if (el) el.textContent = left + "초";
+        if (!el) return;
+        el.textContent = left + "초";
+        el.classList.toggle("low", left <= LOW_SECONDS);
       }, onTimeout);
       timer.start();
     }
@@ -248,6 +255,7 @@
     show(
       '<h1>' + (game.isRetry ? '다시 풀기 결과' : '결과') + '</h1>' +
       '<p class="progress">' + esc(modeName(game.mode)) + ' · ' + esc(game.category) + '</p>' + head +
+      (game.mode === "hint" ? '<p class="hint-summary">힌트 사용: ' + Quiz.hintCount(game) + ' / ' + total + '문항</p>' : '') +
       (game.mode === "practice" ? '<p class="notice">순위표에 기록되지 않음</p>' : '') +
       (game.mode === "practice" && wrong === 0 && game.isRetry ? '<p>모두 맞혔어요!</p>' : '') +
       '<div class="row">' +
@@ -268,14 +276,14 @@
     var el = e.target.closest("[data-action]");
     if (!el) return;
     var a = el.dataset.action;
-    if (a === "mode") showCategories(el.dataset.mode);
+    if (a === "category") showModeSelect(el.dataset.category);
     else if (a === "start") startGame(el.dataset.mode, el.dataset.category);
     else if (a === "choose") onChoose(Number(el.dataset.index));
     else if (a === "hint") onHint();
     else if (a === "next") onNext();
     else if (a === "retry") onRetry();
-    else if (a === "home") showModes();
+    else if (a === "home") showStart();
   });
 
-  showModes();
+  showStart();
 })();

@@ -16,5 +16,7 @@ button:disabled { cursor:default; opacity:.85; }
 .row { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; }
 .score { font-size:2rem; font-weight:700; margin:8px 0; }
 .choice[hidden] { display:none; }
-#timer { font-weight:700; color:var(--bad); }
+#timer { font-weight:700; }
+#timer.low { color:var(--bad); }
+.hint-summary { margin:0 0 8px; color:#5b6478; }
 .cats .notice { margin:6px 0 0; }

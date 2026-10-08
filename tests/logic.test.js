@@ -163,6 +163,20 @@
     eq(g.score, 1); // 원래 판은 그대로
   });
 
+  t("hintCount: 힌트를 쓴 문항 수(틀려도 센다, 안 쓴 문항은 세지 않는다)", function () {
+    var g = hintGame();
+    eq(Q.hintCount(g), 0);
+    Q.useHint(g, seeded(1)); Q.submitAnswer(g, 1); Q.nextQuestion(g);   // 힌트 쓰고 정답
+    eq(Q.hintCount(g), 1);
+    Q.submitAnswer(g, 0); Q.nextQuestion(g);                            // 힌트 없이 정답
+    eq(Q.hintCount(g), 1);
+    var h = hintGame();
+    Q.useHint(h, seeded(2));
+    var wrong = [0, 1, 2, 3].filter(function (i) { return i !== Q.currentQuestion(h).answer && h.hidden.indexOf(i) === -1; })[0];
+    Q.submitAnswer(h, wrong);                                           // 힌트 쓰고 오답
+    eq(Q.hintCount(h), 1);
+  });
+
   t("createCountdown: 만료 시 onExpire 1회, onTick 남은 초", function () {
     var now = 0, expired = 0, left = null;
     var c = Q.createCountdown(15, function (l) { left = l; }, function () { expired++; }, function () { return now; });
