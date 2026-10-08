@@ -124,6 +124,17 @@
 
   var game = null;
 
+  var MODES = [
+    { id: "practice", name: "연습", desc: "시간 제한·힌트 없음", note: "순위표에 기록되지 않음" },
+    { id: "speed", name: "스피드", desc: "문항마다 15초, 시간이 지나면 오답" },
+    { id: "hint", name: "힌트", desc: "문항마다 힌트 1번, 힌트 쓰고 맞히면 0.5점" }
+  ];
+  var SPEED_SECONDS = 15;
+  var timer = null;
+
+  function stopTimer() { if (timer) { timer.stop(); timer = null; } }
+  function modeName(id) { return MODES.filter(function (m) { return m.id === id; })[0].name; }
+
   function esc(s) {
     return String(s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -131,48 +142,93 @@
   }
   function show(html) { document.getElementById("app").innerHTML = html; }
 
-  function showStart() {
-    game = null;
+  function showModes() {
+    stopTimer(); game = null;
     show(
-      '<h1>상식 퀴즈</h1>' +
-      '<p class="notice">연습 모드 · 순위표에 기록되지 않음</p>' +
-      '<div class="cats">' + CATEGORIES.map(function (c) {
-        return '<button data-action="start" data-category="' + esc(c) + '">' + esc(c) + '</button>';
+      '<h1>상식 퀴즈</h1><div class="cats">' + MODES.map(function (m) {
+        return '<button data-action="mode" data-mode="' + m.id + '"><strong>' + esc(m.name) + '</strong><br>' +
+               esc(m.desc) + (m.note ? '<br><span class="notice">' + esc(m.note) + '</span>' : '') + '</button>';
       }).join("") + '</div>'
     );
   }
 
-  function startGame(category) {
-    game = Quiz.createGame("practice", category, Quiz.prepareQuestions(window.QUESTIONS[category]));
+  function showCategories(mode) {
+    show(
+      '<h1>' + esc(modeName(mode)) + ' 모드</h1>' +
+      (mode === "practice" ? '<p class="notice">순위표에 기록되지 않음</p>' : '') +
+      '<div class="cats">' + CATEGORIES.map(function (c) {
+        return '<button data-action="start" data-mode="' + mode + '" data-category="' + esc(c) + '">' + esc(c) + '</button>';
+      }).join("") + '</div>' +
+      '<div class="row"><button data-action="home">뒤로</button></div>'
+    );
+  }
+
+  function startGame(mode, category) {
+    game = Quiz.createGame(mode, category, Quiz.prepareQuestions(window.QUESTIONS[category]));
     showQuestion();
   }
 
   function showQuestion() {
+    stopTimer();
     var q = Quiz.currentQuestion(game);
     show(
-      '<p class="progress">' + esc(game.category) + ' · ' + (game.index + 1) + ' / ' + game.questions.length +
-      ' · 점수 <span id="score">' + game.score + '</span></p>' +
+      '<p class="progress">' + esc(modeName(game.mode)) + (game.isRetry ? ' (다시 풀기)' : '') + ' · ' + esc(game.category) +
+      ' · ' + (game.index + 1) + ' / ' + game.questions.length +
+      (game.isRetry ? '' : ' · 점수 <span id="score">' + game.score + '</span>') +
+      (game.mode === "speed" ? ' · <span id="timer">' + SPEED_SECONDS + '초</span>' : '') + '</p>' +
       '<h2>' + esc(q.question) + '</h2>' +
       '<div class="choices">' + q.choices.map(function (c, i) {
         return '<button class="choice" data-action="choose" data-index="' + i + '">' + esc(c) + '</button>';
       }).join("") + '</div>' +
+      (game.mode === "hint" ? '<div class="row"><button id="hint-btn" data-action="hint">힌트 (오답 2개 지우기)</button></div>' : '') +
       '<div id="feedback" aria-live="polite"></div>'
     );
+    if (game.mode === "speed") {
+      timer = Quiz.createCountdown(SPEED_SECONDS, function (left) {
+        var el = document.getElementById("timer");
+        if (el) el.textContent = left + "초";
+      }, onTimeout);
+      timer.start();
+    }
+  }
+
+  function onHint() {
+    var hidden = Quiz.useHint(game);
+    if (!hidden) return;
+    var buttons = document.querySelectorAll(".choice");
+    hidden.forEach(function (i) { buttons[i].hidden = true; });
+    document.getElementById("hint-btn").disabled = true;
   }
 
   function onChoose(i) {
+    stopTimer();
     var r = Quiz.submitAnswer(game, i);
-    if (!r) return;
+    if (r) reveal(r);
+  }
+
+  function onTimeout() {
+    stopTimer();
+    var r = Quiz.submitTimeout(game);
+    if (r) reveal(r);
+  }
+
+  function reveal(r) {
+    stopTimer();
     var q = Quiz.currentQuestion(game);
     document.querySelectorAll(".choice").forEach(function (b, idx) {
       b.disabled = true;
-      if (idx === q.answer) b.classList.add("correct");
-      else if (idx === i) b.classList.add("wrong");
+      if (idx === q.answer) { b.hidden = false; b.classList.add("correct"); }
+      else if (idx === r.choice) b.classList.add("wrong");
     });
-    document.getElementById("score").textContent = game.score;
+    var hb = document.getElementById("hint-btn");
+    if (hb) hb.disabled = true;
+    var sc = document.getElementById("score");
+    if (sc) sc.textContent = game.score;
     var last = game.index === game.questions.length - 1;
     document.getElementById("feedback").innerHTML =
-      '<p class="' + (r.correct ? "ok" : "bad") + '">' + (r.correct ? "정답!" : "오답") + '</p>' +
+      '<p class="' + (r.correct ? "ok" : "bad") + '">' +
+      (r.timedOut ? "시간 초과 (오답)" : r.correct ? "정답!" : "오답") +
+      (game.isRetry ? '' : ' · +' + r.points + '점') + '</p>' +
       '<p>' + esc(q.explanation) + '</p>' +
       '<button class="primary" data-action="next">' + (last ? "결과 보기" : "다음") + '</button>';
   }
@@ -183,25 +239,43 @@
   }
 
   function showResult() {
+    stopTimer();
+    var total = game.questions.length;
+    var wrong = Quiz.wrongQuestions(game).length;
+    var head = game.isRetry
+      ? '<p class="score">다시 풀기: ' + (total - wrong) + ' / ' + total + ' 맞힘</p>'
+      : '<p class="score">점수: ' + game.score + ' / ' + total + '</p>';
     show(
-      '<h1>결과</h1><p class="progress">' + esc(game.category) + '</p>' +
-      '<p class="score">점수: ' + game.score + ' / ' + game.questions.length + '</p>' +
-      '<p class="notice">순위표에 기록되지 않음</p>' +
+      '<h1>' + (game.isRetry ? '다시 풀기 결과' : '결과') + '</h1>' +
+      '<p class="progress">' + esc(modeName(game.mode)) + ' · ' + esc(game.category) + '</p>' + head +
+      (game.mode === "practice" ? '<p class="notice">순위표에 기록되지 않음</p>' : '') +
+      (game.mode === "practice" && wrong === 0 && game.isRetry ? '<p>모두 맞혔어요!</p>' : '') +
       '<div class="row">' +
-      '<button class="primary" data-action="start" data-category="' + esc(game.category) + '">다시 하기</button>' +
+      (game.mode === "practice" && wrong > 0
+        ? '<button class="primary" data-action="retry">틀린 문제 다시 풀기 (' + wrong + ')</button>' : '') +
+      '<button data-action="start" data-mode="' + game.mode + '" data-category="' + esc(game.category) + '">새로 하기</button>' +
       '<button data-action="home">처음으로</button></div>'
     );
+  }
+
+  function onRetry() {
+    if (Quiz.wrongQuestions(game).length === 0) return;
+    game = Quiz.createRetry(game);
+    showQuestion();
   }
 
   document.addEventListener("click", function (e) {
     var el = e.target.closest("[data-action]");
     if (!el) return;
     var a = el.dataset.action;
-    if (a === "start") startGame(el.dataset.category);
+    if (a === "mode") showCategories(el.dataset.mode);
+    else if (a === "start") startGame(el.dataset.mode, el.dataset.category);
     else if (a === "choose") onChoose(Number(el.dataset.index));
+    else if (a === "hint") onHint();
     else if (a === "next") onNext();
-    else if (a === "home") showStart();
+    else if (a === "retry") onRetry();
+    else if (a === "home") showModes();
   });
 
-  showStart();
+  showModes();
 })();
