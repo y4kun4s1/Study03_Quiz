@@ -66,5 +66,90 @@
     submitAnswer: submitAnswer, nextQuestion: nextQuestion, isFinished: isFinished
   };
 
-  /* ===== 화면 (Task 3에서 추가) ===== */
+  /* ===== 화면 ===== */
+
+  if (!document.getElementById("app")) return; // 테스트 페이지에서는 화면을 만들지 않는다
+
+  var game = null;
+
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function show(html) { document.getElementById("app").innerHTML = html; }
+
+  function showStart() {
+    game = null;
+    show(
+      '<h1>상식 퀴즈</h1>' +
+      '<p class="notice">연습 모드 · 순위표에 기록되지 않음</p>' +
+      '<div class="cats">' + CATEGORIES.map(function (c) {
+        return '<button data-action="start" data-category="' + esc(c) + '">' + esc(c) + '</button>';
+      }).join("") + '</div>'
+    );
+  }
+
+  function startGame(category) {
+    game = Quiz.createGame("practice", category, Quiz.prepareQuestions(window.QUESTIONS[category]));
+    showQuestion();
+  }
+
+  function showQuestion() {
+    var q = Quiz.currentQuestion(game);
+    show(
+      '<p class="progress">' + esc(game.category) + ' · ' + (game.index + 1) + ' / ' + game.questions.length +
+      ' · 점수 <span id="score">' + game.score + '</span></p>' +
+      '<h2>' + esc(q.question) + '</h2>' +
+      '<div class="choices">' + q.choices.map(function (c, i) {
+        return '<button class="choice" data-action="choose" data-index="' + i + '">' + esc(c) + '</button>';
+      }).join("") + '</div>' +
+      '<div id="feedback" aria-live="polite"></div>'
+    );
+  }
+
+  function onChoose(i) {
+    var r = Quiz.submitAnswer(game, i);
+    if (!r) return;
+    var q = Quiz.currentQuestion(game);
+    document.querySelectorAll(".choice").forEach(function (b, idx) {
+      b.disabled = true;
+      if (idx === q.answer) b.classList.add("correct");
+      else if (idx === i) b.classList.add("wrong");
+    });
+    document.getElementById("score").textContent = game.score;
+    var last = game.index === game.questions.length - 1;
+    document.getElementById("feedback").innerHTML =
+      '<p class="' + (r.correct ? "ok" : "bad") + '">' + (r.correct ? "정답!" : "오답") + '</p>' +
+      '<p>' + esc(q.explanation) + '</p>' +
+      '<button class="primary" data-action="next">' + (last ? "결과 보기" : "다음") + '</button>';
+  }
+
+  function onNext() {
+    Quiz.nextQuestion(game);
+    if (Quiz.isFinished(game)) showResult(); else showQuestion();
+  }
+
+  function showResult() {
+    show(
+      '<h1>결과</h1><p class="progress">' + esc(game.category) + '</p>' +
+      '<p class="score">점수: ' + game.score + ' / ' + game.questions.length + '</p>' +
+      '<p class="notice">순위표에 기록되지 않음</p>' +
+      '<div class="row">' +
+      '<button class="primary" data-action="start" data-category="' + esc(game.category) + '">다시 하기</button>' +
+      '<button data-action="home">처음으로</button></div>'
+    );
+  }
+
+  document.addEventListener("click", function (e) {
+    var el = e.target.closest("[data-action]");
+    if (!el) return;
+    var a = el.dataset.action;
+    if (a === "start") startGame(el.dataset.category);
+    else if (a === "choose") onChoose(Number(el.dataset.index));
+    else if (a === "next") onNext();
+    else if (a === "home") showStart();
+  });
+
+  showStart();
 })();
