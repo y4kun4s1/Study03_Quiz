@@ -28,27 +28,37 @@
   }
 
   function scoreFor(mode, correct, hintUsed) {
-    return correct ? 1 : 0;
+    if (!correct) return 0;
+    if (mode === "hint" && hintUsed) return 0.5;
+    return 1;
   }
 
   function createGame(mode, category, questions) {
     return { mode: mode, category: category, questions: questions, index: 0, score: 0,
-             answered: false, hintUsed: false, results: [] };
+             answered: false, hintUsed: false, hidden: [], results: [] };
   }
 
   function currentQuestion(g) { return g.questions[g.index]; }
 
-  function submitAnswer(g, choice) {
-    if (g.answered || isFinished(g)) return null;
-    var q = currentQuestion(g);
-    var correct = choice === q.answer;
+  function record(g, choice, correct, timedOut) {
     var points = scoreFor(g.mode, correct, g.hintUsed);
     var r = { index: g.index, correct: correct, points: points, choice: choice,
-              hintUsed: g.hintUsed, timedOut: false };
+              hintUsed: g.hintUsed, timedOut: timedOut };
     g.score += points;
     g.answered = true;
     g.results.push(r);
     return r;
+  }
+
+  function submitAnswer(g, choice) {
+    if (g.answered || isFinished(g)) return null;
+    if (g.hidden.indexOf(choice) !== -1) return null;
+    return record(g, choice, choice === currentQuestion(g).answer, false);
+  }
+
+  function submitTimeout(g) {
+    if (g.answered || isFinished(g)) return null;
+    return record(g, null, false, true);
   }
 
   function nextQuestion(g) {
@@ -56,14 +66,56 @@
     g.index += 1;
     g.answered = false;
     g.hintUsed = false;
+    g.hidden = [];
   }
 
   function isFinished(g) { return g.index >= g.questions.length; }
 
+  function useHint(g, rng) {
+    if (g.mode !== "hint" || g.answered || g.hintUsed || isFinished(g)) return null;
+    var q = currentQuestion(g);
+    var wrong = q.choices.map(function (_, i) { return i; }).filter(function (i) { return i !== q.answer; });
+    g.hidden = shuffle(wrong, rng).slice(0, 2);
+    g.hintUsed = true;
+    return g.hidden.slice();
+  }
+
+  function wrongQuestions(g) {
+    return g.results.filter(function (r) { return !r.correct; })
+                    .map(function (r) { return g.questions[r.index]; });
+  }
+
+  function createRetry(g, rng) {
+    var r = createGame("practice", g.category, prepareQuestions(wrongQuestions(g), rng));
+    r.isRetry = true;
+    return r;
+  }
+
+  function createCountdown(seconds, onTick, onExpire, now) {
+    now = now || Date.now;
+    var deadline = 0, handle = null, fired = false;
+    function stop() { if (handle !== null) { clearInterval(handle); handle = null; } }
+    function tick() {
+      if (handle === null) return;
+      var left = Math.max(0, Math.ceil((deadline - now()) / 1000));
+      onTick(left);
+      if (left === 0 && !fired) { fired = true; stop(); onExpire(); }
+    }
+    function start() {
+      stop(); fired = false;
+      deadline = now() + seconds * 1000;
+      handle = setInterval(tick, 200);
+      tick();
+    }
+    return { start: start, stop: stop, tick: tick };
+  }
+
   window.Quiz = {
     CATEGORIES: CATEGORIES, shuffle: shuffle, prepareQuestions: prepareQuestions,
     scoreFor: scoreFor, createGame: createGame, currentQuestion: currentQuestion,
-    submitAnswer: submitAnswer, nextQuestion: nextQuestion, isFinished: isFinished
+    submitAnswer: submitAnswer, submitTimeout: submitTimeout, nextQuestion: nextQuestion,
+    isFinished: isFinished, useHint: useHint, wrongQuestions: wrongQuestions,
+    createRetry: createRetry, createCountdown: createCountdown
   };
 
   /* ===== 화면 ===== */
