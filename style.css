@@ -20,3 +20,4 @@ button:disabled { cursor:default; opacity:.85; }
 #timer.low { color:var(--bad); }
 .hint-summary { margin:0 0 8px; color:#5b6478; }
 .cats .notice { margin:6px 0 0; }
+.student { margin:0 0 4px; color:#5b6478; font-size:.95rem; }

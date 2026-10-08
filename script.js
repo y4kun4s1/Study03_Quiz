@@ -150,6 +150,7 @@
   function showStart() {
     stopTimer(); game = null;
     show(
+      '<p class="student">학번 2601977&nbsp;&nbsp;이름 정지수</p>' +
       '<h1>상식 퀴즈</h1><div class="cats">' + CATEGORIES.map(function (c) {
         return '<button data-action="category" data-category="' + esc(c) + '">' + esc(c) + '</button>';
       }).join("") + '</div>'
